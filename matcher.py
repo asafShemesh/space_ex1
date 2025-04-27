@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import time
 from scipy.spatial import cKDTree
 
+
 def detect_stars(image_path, min_brightness=80):
 
     start_time = time.time()
@@ -18,7 +19,7 @@ def detect_stars(image_path, min_brightness=80):
 
     # Set up SimpleBlobDetector parameters
     params = cv2.SimpleBlobDetector_Params()
-    params.minThreshold = 100
+    params.minThreshold = 140
     params.maxThreshold = 255
     params.filterByArea = True
     params.minArea = 5
@@ -65,12 +66,10 @@ def find_top_bright_triplets(stars, top_brightest=15, top_triplets=5, min_area=5
     points = np.array([[star[0], star[1]] for _, star in selected])
 
     triplet_candidates = []
-    for (i, j, k) in itertools.combinations(range(len(points)), 3):
+    for i, j, k in itertools.combinations(range(len(points)), 3):
         p1, p2, p3 = points[i], points[j], points[k]
         area = 0.5 * abs(
-            p1[0]*(p2[1]-p3[1]) +
-            p2[0]*(p3[1]-p1[1]) +
-            p3[0]*(p1[1]-p2[1])
+            p1[0] * (p2[1] - p3[1]) + p2[0] * (p3[1] - p1[1]) + p3[0] * (p1[1] - p2[1])
         )
         if area > min_area:
             triplet_candidates.append((area, (indices[i], indices[j], indices[k])))
@@ -79,18 +78,16 @@ def find_top_bright_triplets(stars, top_brightest=15, top_triplets=5, min_area=5
     return [trip for _, trip in triplet_candidates[:top_triplets]]
 
 
-
-
 def match_fixed_triplet(stars1, stars2, p1_idx, p2_idx, p3_idx, distance_thresh=10):
 
-    pts1 = np.array([[x,y] for x,y,_,_ in stars1], dtype=np.float32)
-    pts2 = np.array([[x,y] for x,y,_,_ in stars2], dtype=np.float32)
+    pts1 = np.array([[x, y] for x, y, _, _ in stars1], dtype=np.float32)
+    pts2 = np.array([[x, y] for x, y, _, _ in stars2], dtype=np.float32)
     tree2 = cKDTree(pts2)
 
     src_pts = pts1[[p1_idx, p2_idx, p3_idx]]
 
     best_count = 0
-    best_mean_dist = float('inf')
+    best_mean_dist = float("inf")
     best_match = None
 
     for combo in itertools.combinations(range(len(stars2)), 3):
@@ -100,14 +97,14 @@ def match_fixed_triplet(stars1, stars2, p1_idx, p2_idx, p3_idx, distance_thresh=
             continue
 
         # Warp all pts1
-        ones = np.ones((len(pts1),1), dtype=np.float32)
+        ones = np.ones((len(pts1), 1), dtype=np.float32)
         pts1_h = np.hstack([pts1, ones])
         warped = (M.dot(pts1_h.T)).T  # shape (N1,2)
 
         # Find all potential pairs within threshold
         dists, idxs = tree2.query(warped, distance_upper_bound=distance_thresh)
         candidates = [
-            (i1, i2, d) 
+            (i1, i2, d)
             for i1, (i2, d) in enumerate(zip(idxs, dists))
             if d < distance_thresh
         ]
@@ -124,19 +121,19 @@ def match_fixed_triplet(stars1, stars2, p1_idx, p2_idx, p3_idx, distance_thresh=
 
         count = len(unique_pairs)
         if count > 0:
-            mean_dist = float(np.mean([d for _,_,d in unique_pairs]))
+            mean_dist = float(np.mean([d for _, _, d in unique_pairs]))
         else:
-            mean_dist = float('inf')
+            mean_dist = float("inf")
 
         if (count > best_count) or (count == best_count and mean_dist < best_mean_dist):
             best_count = count
             best_mean_dist = mean_dist
             best_match = {
-                'matched_triplet2': combo,
-                'affine_matrix': M,
-                'mean_distance': mean_dist,
+                "matched_triplet2": combo,
+                "affine_matrix": M,
+                "mean_distance": mean_dist,
                 # drop the distance from the final list if you only want indices
-                'matched_indices': [(i1,i2) for i1,i2,_ in unique_pairs]
+                "matched_indices": [(i1, i2) for i1, i2, _ in unique_pairs],
             }
 
     return best_count, best_match
@@ -144,56 +141,72 @@ def match_fixed_triplet(stars1, stars2, p1_idx, p2_idx, p3_idx, distance_thresh=
 
 if __name__ == "__main__":
     # Paths
-    image_path1 = r"C:\space_ex1\IMG_3046.jpg"
-    image_path2 = r"C:\space_ex1\IMG_3048.jpg"
+    image_path1 = r"C:\space_ex1\IMG_3052.png"
+    image_path2 = r"C:\space_ex1\IMG_3053.png"
 
     # Detect
     stars_list1 = detect_stars(image_path1)
     stars_list2 = detect_stars(image_path2)
 
     # Candidate triplets
-    top_triplets = find_top_bright_triplets(stars_list1,top_brightest=15,top_triplets=5,min_area=50)
+    top_triplets = find_top_bright_triplets(
+        stars_list1, top_brightest=15, top_triplets=5, min_area=50
+    )
 
     # Find best overall
     best_count = 0
     best_match = None
-    for p1,p2,p3 in top_triplets:
-        cnt, match = match_fixed_triplet(stars_list1, stars_list2, p1,p2,p3, distance_thresh=40)
+    for p1, p2, p3 in top_triplets:
+        cnt, match = match_fixed_triplet(
+            stars_list1, stars_list2, p1, p2, p3, distance_thresh=500
+        )
         if match and cnt > best_count:
             best_count = cnt
             best_match = match
 
     print(f"pairs matched = {best_count}")
 
-    # --- Visualization ---
-    if best_match:
-        # Load color images
-        img1 = cv2.imread(image_path1)
-        img2 = cv2.imread(image_path2)
-        h1,w1 = img1.shape[:2]
-        h2,w2 = img2.shape[:2]
+# --- Visualization ---
+if best_match:
+    # Load color images
+    img1 = cv2.imread(image_path1)
+    img2 = cv2.imread(image_path2)
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
 
-        # Build canvas
-        canvas = np.zeros((max(h1,h2), w1+w2, 3), dtype=np.uint8)
-        canvas[:h1, :w1] = img1
-        canvas[:h2, w1:] = img2
+    # ── NEW: resize both images to the same height ──
+    target_h = max(h1, h2)
+    scale1 = target_h / h1
+    scale2 = target_h / h2
+    img1 = cv2.resize(img1, (int(w1 * scale1), target_h), interpolation=cv2.INTER_AREA)
+    img2 = cv2.resize(img2, (int(w2 * scale2), target_h), interpolation=cv2.INTER_AREA)
+    # update dims for canvas
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
 
-        # Draw lines
-        pairs = best_match['matched_indices']
-        for (i1,i2) in pairs:
-            x1,y1,_,_ = stars_list1[i1]
-            x2,y2,_,_ = stars_list2[i2]
-            color = tuple(np.random.randint(0,255,3).tolist())
-            pt1 = (int(x1), int(y1))
-            pt2 = (int(x2)+w1, int(y2))
-            cv2.line(canvas, pt1, pt2, color, thickness=2)
-            # Optionally draw circles too:
-            cv2.circle(canvas, pt1, 55, color, 6)
-            cv2.circle(canvas, pt2, 55, color, 6)
+    # Build canvas
+    canvas = np.zeros((max(h1, h2), w1 + w2, 3), dtype=np.uint8)
+    canvas[:h1, :w1] = img1
+    canvas[:h2, w1:] = img2
 
-        # Show
-        plt.figure(figsize=(12,6))
-        plt.imshow(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
-        plt.axis('off')
-        plt.title(f"{len(pairs)} matches were found")
-        plt.show()
+    # Draw lines (exactly as before, but scale your star coords)
+    pairs = best_match["matched_indices"]
+    for i1, i2 in pairs:
+        x1, y1, _, _ = stars_list1[i1]
+        x2, y2, _, _ = stars_list2[i2]
+
+        # ── NEW: scale points to match resized images ──
+        pt1 = (int(x1 * scale1), int(y1 * scale1))
+        pt2 = (int(x2 * scale2) + w1, int(y2 * scale2))
+
+        color = tuple(np.random.randint(0, 255, 3).tolist())
+        cv2.line(canvas, pt1, pt2, color, thickness=2)
+        cv2.circle(canvas, pt1, 55, color, 6)
+        cv2.circle(canvas, pt2, 55, color, 6)
+
+    # Show
+    plt.figure(figsize=(12, 6))
+    plt.imshow(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
+    plt.axis("off")
+    plt.title(f"{len(pairs)} matches were found")
+    plt.show()
